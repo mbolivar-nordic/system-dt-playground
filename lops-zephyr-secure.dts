@@ -1,0 +1,271 @@
+/*
+ * Copyright (c) 2022 Xilinx Inc. All rights reserved.
+ *
+ * Author:
+ *       Bruce Ashfield <bruce.ashfield@xilinx.com>
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/dts-v1/;
+
+/ {
+        compatible = "system-device-tree-v1,lop";
+        priority = <2>;
+        lops {
+                compatible = "system-device-tree-v1,lop";
+                lop_0_0 {
+                        compatible = "system-device-tree-v1,lop,meta-v1","phandle-desc-v1";
+                        secure-address-map = "field phandle field field";
+                };
+
+                lop_0_0_1 {
+                        compatible = "system-device-tree-v1,lop,code-v1";
+                        inherit = "lopper_lib";
+                        code = "
+                                  print( '[INFO]: splitting secure/non-secure device trees' )
+                              ";
+                };
+
+                // copy the input system device tree to secure and
+                // non-secure trees
+                lop_0_1 {
+                        compatible = "system-device-tree-v1,lop,tree";
+                        tree = "secure-tree";
+                        nodes = "*";
+                };
+                lop_0_2 {
+                        compatible = "system-device-tree-v1,lop,tree";
+                        tree = "non-secure-tree";
+                        nodes = "*";
+                        // while we are here, remove the secure bus
+                        lops_0_2_1 {
+                                   compatible = "system-device-tree-v1,lop,modify";
+                                   tree = "non-secure-tree";
+                                   modify = "/app-s/::";
+                        };
+                };
+
+                // secure processing, start with the cpus that have a
+                // secure-address-map
+                lop_0_3 {
+                        compatible = "system-device-tree-v1,lop,select";
+                        tree = "secure-tree";
+                        select_1;
+                        select_2 = "/.*:secure-address-map:";
+                        lop_0_3_1 {
+                            compatible = "system-device-tree-v1,lop,code";
+                            tree = "secure-tree";
+                            inherit = "lopper_lib";
+                            code = "
+                                for c in tree.__selected__:
+                                    print( '[INFO]: found secure cpu: %s' % c.abs_path )
+
+                                    # we need to walk the items in the secure-address-map,
+                                    # looking for the indirect magic bus, and adjust the reg<> values in
+                                    # the target bus, based on our first field
+
+                                    secure_address_map = c['secure-address-map']
+                                    secure_chunks = list( lopper_lib.chunks( secure_address_map.value, 4 ) )
+
+                                    #print( '    secure map: %s' % secure_address_map.value )
+                                    #print( '    secure chunks %s' % secure_chunks )
+
+                                    all_refs = c.resolve_all_refs( [ '^address-map' ] )
+                                    secure_refs = secure_address_map.resolve_phandles()
+
+                                    for idx, s in enumerate(secure_refs):
+                                        if 'indirect-magic-school-bus' in s['compatible'].value:
+                                            offset = secure_chunks[idx][0]
+                                            for busnode in s.subnodes():
+                                                try:
+                                                    regval = busnode['reg']
+                                                    regval.value[0] = regval.value[0] + offset
+                                                except:
+                                                    # no reg, move on ..
+                                                    pass
+                                        if 'indirect-bus' in s['compatible'].value:
+                                            # print( 'indirect bus item found: %s' % (s.abs_path))
+                                            s.ref = 1
+                             ";
+                        };
+                        // rename @0 cluster to "/cpus", delete @1 cluster and drop
+                        // *address-map properties from any nodes
+                        lops_0_3_2 {
+                                   compatible = "system-device-tree-v1,lop,modify";
+                                   tree = "secure-tree";
+                                   modify = "/cpus-cluster@0/::/cpus/";
+                        };
+                        lops_0_3_3 {
+                                   compatible = "system-device-tree-v1,lop,modify";
+                                   tree = "secure-tree";
+                                   modify = "/cpus-cluster@1/::";
+                        };
+                        lops_0_3_4 {
+                                   compatible = "system-device-tree-v1,lop,modify";
+                                   tree = "secure-tree";
+                                   modify = "/.*:secure-address-map:";
+                        };
+                        lops_0_3_5 {
+                                   compatible = "system-device-tree-v1,lop,modify";
+                                   tree = "secure-tree";
+                                   modify = "/.*:address-map:";
+                        };
+                };
+                lops_0_3a {
+                        compatible = "system-device-tree-v1,lop,select";
+                        tree = "secure-tree";
+                        select_1;
+                        select_2 = "/.*:compatible:indirect-bus";
+                        lop_0_3a_1 {
+                            compatible = "system-device-tree-v1,lop,code";
+                            tree = "secure-tree";
+                            inherit = "lopper_lib";
+                            code = "
+                                unrefd_nodes = []
+                                for c in tree.__selected__:
+                                    # print( 'found indirect bus node %s' % c.abs_path )
+                                    if not c.ref:
+                                        unrefd_nodes.append( c )
+                                    else:
+                                        # make it a simple-bus
+                                        c['compatible'] = 'simple-bus'
+                                for c in unrefd_nodes:
+                                    print( '[INFO]: (secure) removing unreferenced node %s' % c.abs_path )
+                                    tree - c
+                                ";
+                        };
+                };
+
+
+
+
+               lop_0_4 {
+                        compatible = "system-device-tree-v1,lop,select";
+                        tree = "non-secure-tree";
+                        select_1;
+                        select_2 = "/cpus-cluster@.$:!secure-address-map:";
+                        lop_0_4_1 {
+                            compatible = "system-device-tree-v1,lop,code";
+                            tree = "non-secure-tree";
+                            inherit = "lopper_lib";
+                            code = "
+                                for c in tree.__selected__:
+                                    print( '[INFO]: found non secure cpu cluster: %s' % c.abs_path )
+
+                                    # we need to walk the items in the address-map,
+                                    # looking for the indirect magic bus, and adjust the reg<> values in
+                                    # the target bus, based on our first field
+
+                                    address_map = c['address-map']
+                                    address_chunks = list( lopper_lib.chunks( address_map.value, 4 ) )
+
+                                    #print( '    address map: %s' % address_map.value )
+                                    #print( '    address chunks %s' % address_chunks )
+
+                                    all_refs = c.resolve_all_refs( [ '^address-map' ] )
+                                    address_refs = address_map.resolve_phandles()
+
+                                    for idx, s in enumerate(address_refs):
+                                        if 'indirect-magic-school-bus' in s['compatible'].value:
+                                            offset = address_chunks[idx][0]
+                                            for busnode in s.subnodes():
+                                                try:
+                                                    regval = busnode['reg']
+                                                    regval.value[0] = regval.value[0] + offset
+                                                except:
+                                                    # no reg, move on ..
+                                                    pass
+                                        if 'indirect-bus' in s['compatible'].value:
+                                            # print( 'indirect bus item found: %s' % (s.abs_path))
+                                            s.ref = 1
+
+                            ";
+                         };
+                         // rename @0 cluster to "/cpus", delete @1 cluster and drop
+                         // *address-map properties from any nodes
+                         lops_0_4_2 {
+                                    compatible = "system-device-tree-v1,lop,modify";
+                                    tree = "non-secure-tree";
+                                    modify = "/cpus-cluster@0/::/cpus/";
+                         };
+                         lops_0_4_3 {
+                                    compatible = "system-device-tree-v1,lop,modify";
+                                    tree = "non-secure-tree";
+                                    modify = "/cpus-cluster@1/::";
+                         };
+                         lops_0_4_4 {
+                                    compatible = "system-device-tree-v1,lop,modify";
+                                    tree = "non-secure-tree";
+                                    modify = "/.*:secure-address-map:";
+                         };
+                         lops_0_4_5 {
+                                    compatible = "system-device-tree-v1,lop,modify";
+                                    tree = "non-secure-tree";
+                                    modify = "/.*:address-map:";
+                         };
+                };
+                lops_0_5 {
+                        compatible = "system-device-tree-v1,lop,select";
+                        tree = "non-secure-tree";
+                        select_1;
+                        select_2 = "/.*:compatible:indirect-bus";
+                        lop_0_5_1 {
+                            compatible = "system-device-tree-v1,lop,code";
+                            tree = "non-secure-tree";
+                            inherit = "lopper_lib";
+                            code = "
+                                unrefd_nodes = []
+                                for c in tree.__selected__:
+                                    # print( 'found indirect bus node %s' % c.abs_path )
+                                    if not c.ref:
+                                        unrefd_nodes.append( c )
+                                    else:
+                                        # make it a simple-bus
+                                        c['compatible'] = 'simple-bus'
+                                for c in unrefd_nodes:
+                                    print( '[INFO]: removing unreferenced node %s' % c.abs_path )
+                                    tree - c
+                                ";
+                        };
+                };
+
+                // make the bus a simple-bus
+                lop_0_9 {
+                        compatible = "system-device-tree-v1,lop,select";
+                        tree = "non-secure-tree";
+                        select_1;
+                        select_2 = "/.*:compatible:indirect-magic-school-bus";
+                        lop_0_9_1 {
+                            compatible = "system-device-tree-v1,lop,modify";
+                            tree = "non-secure-tree";
+                            modify = ":compatible:simple-bus";
+                        };
+                };
+                lop_0_10 {
+                        compatible = "system-device-tree-v1,lop,select";
+                        tree = "secure-tree";
+                        select_1;
+                        select_2 = "/.*:compatible:indirect-magic-school-bus";
+                        lop_0_10_1 {
+                            compatible = "system-device-tree-v1,lop,modify";
+                            tree = "secure-tree";
+                            modify = ":compatible:simple-bus";
+                        };
+                };
+
+                // output the trees
+                lop_1_0 {
+                        compatible = "system-device-tree-v1,lop,output";
+                        tree = "secure-tree";
+                        outfile = "zephyr-secure.dts";
+                        nodes = "*";
+                };
+                lop_2_0 {
+                        compatible = "system-device-tree-v1,lop,output";
+                        tree = "non-secure-tree";
+                        outfile = "zephyr-non-secure.dts";
+                        nodes = "*";
+                };
+        };
+};

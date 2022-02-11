@@ -20,18 +20,18 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 
+
 		address-map =
+			<0x0 &app_core_components 0x0 0x01000000>,
+			<0xe0000000 &app_ppb 0xe0000000 0xffffffff>,
+			<0x40000000 &app_ns 0x40000000 0x01000000>,
+			<0x40000000 &app_us 0x0 0x01000000>;
+
+		secure-address-map =
 			<0x0 &app_core_components 0x0 0x01000000>,
 			<0xe0000000 &app_ppb 0xe0000000 0xffffffff>,
 			<0x50000000 &app_s 0x50000000 0x01000000>,
 			<0x40000000 &app_ns 0x40000000 0x01000000>,
-		        /*
-			 * FIXME:
-			 *
-			 * this app_us part forces secure-only addresses
-			 * for user-selectable peripherals. What is the
-			 * right way to handle this in lopper?
-			 */
 			<0x50000000 &app_us 0x0 0x01000000>;
 
 		cpu@0 {
@@ -49,16 +49,11 @@
 
 	/* Network core cluster -------------------------------------------- */
 
-	cpus-cluster@1 {	/* network core cluster */
+	cpus-cluster@1 {
 		compatible = "cpus,cluster";
 		#address-cells = <1>;
 		#size-cells = <0>;
 
-		address-map =
-			<0x1ff0000 &net_core_components 0x1ff0000 0xe010000>,
-			<0x01000000 &net_mem 0x01000000 0x3f000000>,
-			<0xe0000000 &net_ppb 0xe0000000 0xffffffff>,
-			<0x41000000 &net_peripherals 0x41000000 0xf000000>,
 		        /*
 			 * FIXME:
 			 *
@@ -66,8 +61,7 @@
 			 * network core are treated as secure, but that's
 			 * configurable.
 			 */
-			<0x50000000 &app_s 0x50000000 0x01000000>,
-			<0x40000000 &app_ns 0x40000000 0x01000000>,
+
 		        /*
 			 * FIXME:
 			 *
@@ -76,6 +70,14 @@
 			 * same configuration bit mentioned above.
 			 *
 			 */
+
+		address-map =
+			<0x1ff0000 &net_core_components 0x1ff0000 0xe010000>,
+			<0x01000000 &net_mem 0x01000000 0x3f000000>,
+			<0xe0000000 &net_ppb 0xe0000000 0xffffffff>,
+			<0x41000000 &net_peripherals 0x41000000 0xf000000>,
+			<0x50000000 &app_s 0x50000000 0x01000000>,
+			<0x40000000 &app_ns 0x40000000 0x01000000>,
 			<0x50000000 &app_us 0x0 0x01000000>;
 
 		cpu@0 {
@@ -232,7 +234,7 @@
 		 * security state / memory map is user-selectable via
 		 * the SPU
 		 */
-		compatible = "indirect-bus";
+		compatible = "indirect-magic-school-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 
