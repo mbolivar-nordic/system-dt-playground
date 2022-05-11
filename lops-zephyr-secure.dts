@@ -80,7 +80,10 @@
                                             for busnode in s.subnodes():
                                                 try:
                                                     regval = busnode['reg']
-                                                    regval.value[0] = regval.value[0] + offset
+                                                    new_reg = regval.value[0] + offset
+                                                    regval.value[0] = new_reg
+                                                    name_without_unit = busnode.name.rsplit('@', 1)[0]
+                                                    busnode.name = f'{name_without_unit}@{hex(new_reg)[2:]}'
                                                 except:
                                                     # no reg, move on ..
                                                     pass
